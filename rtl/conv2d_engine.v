@@ -56,14 +56,21 @@ module conv2d_engine #(
     output reg                  ofmap_we
 );
 
+    // NOTE on timing: bram_dp has a registered read port, so there is a full
+    // 2-cycle latency from "address becomes stable" to "dout reflects it"
+    // (1 cycle for the address register itself, 1 more for the memory's own
+    // output register). Each *_ADDR / *_WAIT / *_READ triplet below exists
+    // to respect that latency -- do not collapse ADDR directly into READ.
     localparam S_IDLE      = 4'd0,
                S_ADDR       = 4'd1,
-               S_READ       = 4'd2,
-               S_BIAS_ADDR  = 4'd3,
-               S_BIAS_READ  = 4'd4,
-               S_WRITE      = 4'd5,
-               S_NEXT       = 4'd6,
-               S_DONE       = 4'd7;
+               S_WAIT       = 4'd2,
+               S_READ       = 4'd3,
+               S_BIAS_ADDR  = 4'd4,
+               S_BIAS_WAIT  = 4'd5,
+               S_BIAS_READ  = 4'd6,
+               S_WRITE      = 4'd7,
+               S_NEXT       = 4'd8,
+               S_DONE       = 4'd9;
 
     reg [3:0]  state;
     reg [6:0]  out_size;
@@ -110,7 +117,11 @@ module conv2d_engine #(
                 S_ADDR: begin
                     ifmap_addr  <= ifmap_addr_f(ic, oy + ky, ox + kx, in_size);
                     weight_addr <= weight_addr_f(oc, ic, ky, kx, in_ch);
-                    state <= S_READ;
+                    state <= S_WAIT;
+                end
+
+                S_WAIT: begin
+                    state <= S_READ;   // let the memory's output register catch up
                 end
 
                 S_READ: begin
@@ -137,6 +148,10 @@ module conv2d_engine #(
 
                 S_BIAS_ADDR: begin
                     bias_addr <= {10'd0, oc};
+                    state <= S_BIAS_WAIT;
+                end
+
+                S_BIAS_WAIT: begin
                     state <= S_BIAS_READ;
                 end
 

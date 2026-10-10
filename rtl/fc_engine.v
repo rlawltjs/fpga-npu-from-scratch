@@ -41,16 +41,20 @@ module fc_engine #(
     output reg                  ovec_we
 );
 
-    localparam S_IDLE     = 3'd0,
-               S_ADDR      = 3'd1,
-               S_READ      = 3'd2,
-               S_BIAS_ADDR = 3'd3,
-               S_BIAS_READ = 3'd4,
-               S_WRITE     = 3'd5,
-               S_NEXT      = 3'd6,
-               S_DONE      = 3'd7;
+    // See conv2d_engine.v note: bram_dp read latency is 2 cycles
+    // (address register + memory output register), hence the *_WAIT states.
+    localparam S_IDLE     = 4'd0,
+               S_ADDR      = 4'd1,
+               S_WAIT      = 4'd2,
+               S_READ      = 4'd3,
+               S_BIAS_ADDR = 4'd4,
+               S_BIAS_WAIT = 4'd5,
+               S_BIAS_READ = 4'd6,
+               S_WRITE     = 4'd7,
+               S_NEXT      = 4'd8,
+               S_DONE      = 4'd9;
 
-    reg [2:0]  state;
+    reg [3:0]  state;
     reg [8:0]  o;
     reg [9:0]  i;
     reg signed [ACC_W-1:0] acc;
@@ -77,6 +81,10 @@ module fc_engine #(
                 S_ADDR: begin
                     ivec_addr   <= i;
                     weight_addr <= o * in_dim + i;
+                    state <= S_WAIT;
+                end
+
+                S_WAIT: begin
                     state <= S_READ;
                 end
 
@@ -92,6 +100,10 @@ module fc_engine #(
 
                 S_BIAS_ADDR: begin
                     bias_addr <= {7'd0, o};
+                    state <= S_BIAS_WAIT;
+                end
+
+                S_BIAS_WAIT: begin
                     state <= S_BIAS_READ;
                 end
 
