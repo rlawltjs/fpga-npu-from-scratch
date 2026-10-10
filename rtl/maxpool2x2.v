@@ -30,16 +30,23 @@ module maxpool2x2 #(
     output reg                  ofmap_we
 );
 
-    localparam S_IDLE = 3'd0,
-               S_A0    = 3'd1,   // drive addr for top-left
-               S_A1    = 3'd2,   // capture top-left,  drive addr top-right
-               S_A2    = 3'd3,   // capture top-right, drive addr bottom-left
-               S_A3    = 3'd4,   // capture bottom-left, drive addr bottom-right
-               S_WRITE = 3'd5,   // capture bottom-right, compute max, write
-               S_NEXT  = 3'd6,
-               S_DONE  = 3'd7;
+    // See conv2d_engine.v note: bram_dp read latency is 2 cycles (address
+    // register + memory output register), so each of the 4 window reads
+    // needs its own ADDR -> WAIT -> (capture) sequence.
+    localparam S_IDLE = 4'd0,
+               S_A0    = 4'd1,   // drive addr for top-left
+               S_W0    = 4'd2,   // wait for memory
+               S_A1    = 4'd3,   // capture top-left,  drive addr top-right
+               S_W1    = 4'd4,
+               S_A2    = 4'd5,   // capture top-right, drive addr bottom-left
+               S_W2    = 4'd6,
+               S_A3    = 4'd7,   // capture bottom-left, drive addr bottom-right
+               S_W3    = 4'd8,
+               S_WRITE = 4'd9,   // capture bottom-right, compute max, write
+               S_NEXT  = 4'd10,
+               S_DONE  = 4'd11;
 
-    reg [2:0]  state;
+    reg [3:0]  state;
     reg [6:0]  out_size;
     reg [5:0]  ch;
     reg [6:0]  oy, ox;
@@ -81,23 +88,27 @@ module maxpool2x2 #(
 
                 S_A0: begin
                     ifmap_addr <= addr_f(ch, oy*2,   ox*2,   in_size);
-                    state <= S_A1;
+                    state <= S_W0;
                 end
+                S_W0: state <= S_A1;
                 S_A1: begin
                     v0 <= ifmap_dout;
                     ifmap_addr <= addr_f(ch, oy*2,   ox*2+1, in_size);
-                    state <= S_A2;
+                    state <= S_W1;
                 end
+                S_W1: state <= S_A2;
                 S_A2: begin
                     v1 <= ifmap_dout;
                     ifmap_addr <= addr_f(ch, oy*2+1, ox*2,   in_size);
-                    state <= S_A3;
+                    state <= S_W2;
                 end
+                S_W2: state <= S_A3;
                 S_A3: begin
                     v2 <= ifmap_dout;
                     ifmap_addr <= addr_f(ch, oy*2+1, ox*2+1, in_size);
-                    state <= S_WRITE;
+                    state <= S_W3;
                 end
+                S_W3: state <= S_WRITE;
                 S_WRITE: begin
                     ofmap_addr <= ch * (out_size*out_size) + oy*out_size + ox;
                     ofmap_din  <= max4(v0, v1, v2, ifmap_dout);

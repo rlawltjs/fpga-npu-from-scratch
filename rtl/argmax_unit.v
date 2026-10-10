@@ -24,10 +24,12 @@ module argmax_unit #(
     output reg signed [DATA_W-1:0] max_val
 );
 
+    // See conv2d_engine.v note: bram_dp read latency is 2 cycles.
     localparam S_IDLE = 3'd0,
                S_ADDR  = 3'd1,
-               S_READ  = 3'd2,
-               S_DONE  = 3'd3;
+               S_WAIT  = 3'd2,
+               S_READ  = 3'd3,
+               S_DONE  = 3'd4;
 
     reg [2:0] state;
     reg [7:0] idx;
@@ -50,6 +52,10 @@ module argmax_unit #(
 
                 S_ADDR: begin
                     ivec_addr <= {8'd0, idx};
+                    state <= S_WAIT;
+                end
+
+                S_WAIT: begin
                     state <= S_READ;
                 end
 
